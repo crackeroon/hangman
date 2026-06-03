@@ -1,0 +1,20 @@
+
+@use "typo" as *;
+
+@use "bootstrap" as *;
+@use "./theme/dark" as *;
+
+.wrapper-app {
+  height: 100svh;
+  width: 100svw;
+}
+
+html, body {
+  font-size: 14px;
+  color: var(--main-black);
+}
+
+
+.h1 {
+  font-size: 50px;
+}
