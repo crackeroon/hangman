@@ -1,42 +1,34 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
-import {dictionary, ruKeys} from "@/constants/Global";
+import { ruKeys } from "@/constants/Global";
+import { useRoute, useRouter } from "vue-router";
+import { hangmanApi } from "@/services/api/hangman-api";
+
+const route = useRoute();
+const router = useRouter();
 
 const hangmanParts = [
-  "platform",    // ошибка 1
-  "part1",       // ошибка 2
-  "part2",       // ошибка 3
-  "part3",       // ошибка 4
-  "head",        // ошибка 5
-  "body",        // ошибка 6
-  "handLeft",    // ошибка 7
-  "handRight",   // ошибка 8
-  "legLeft",     // ошибка 9
-  "legRight"     // ошибка 10
+  "platform", "part1", "part2", "part3", "head", "body", "handLeft", "handRight", "legLeft", "legRight"
 ];
 
 const MAX_MISTAKES = hangmanParts.length;
 
-// Текущее загаданное слово
-const intendedWord = ref({
-  text: "",
-  theme: "transport"
-});
+const themesParam = route.query.themes as string || '';
+const selectedThemes = themesParam ? themesParam.split(',') : [];
 
-// Состояние игры
+const intendedWord = ref({ text: "", theme: "" });
 const isWinner = ref(false);
 const isLoser = ref(false);
 const currentMistakes = ref(0);
 const guessedLetters = ref<Set<string>>(new Set());
 const wrongLetters = ref<Set<string>>(new Set());
+const loading = ref(true);
+const error = ref('');
 
 const wordLetters = computed(() => intendedWord.value.text.split(""));
-
 const displayWord = computed(() => {
   if (!intendedWord.value.text) return [];
-  return wordLetters.value.map(letter =>
-      guessedLetters.value.has(letter) ? letter : "_"
-  );
+  return wordLetters.value.map(letter => guessedLetters.value.has(letter) ? letter : "_");
 });
 
 const isWordGuessed = computed(() => {
@@ -44,91 +36,90 @@ const isWordGuessed = computed(() => {
   return wordLetters.value.every(letter => guessedLetters.value.has(letter));
 });
 
-// Показать конкретную часть виселицы
 const showHangmanPart = (index: number) => {
-  if (index >= hangmanParts.length) return;
-  const partId = hangmanParts[index];
-  const element = document.getElementById(partId);
-  if (element) {
-    element.classList.add("visible");
-  }
+  const element = document.getElementById(hangmanParts[index]);
+  if (element) element.classList.add("visible");
 };
 
-// Скрыть все части
 const hideAllHangmanParts = () => {
   hangmanParts.forEach(partId => {
     const element = document.getElementById(partId);
-    if (element) {
-      element.classList.remove("visible");
-    }
+    if (element) element.classList.remove("visible");
   });
 };
 
-// Обновить все части по количеству ошибок
 const updateHangmanByMistakes = () => {
   for (let i = 0; i < currentMistakes.value && i < hangmanParts.length; i++) {
     showHangmanPart(i);
   }
 };
 
-// Сброс игры
-const resetGame = () => {
-  const randomIndex = Math.floor(Math.random() * dictionary.length);
-  const newWord = dictionary[randomIndex];
-  intendedWord.value.text = newWord.text.toUpperCase();
-  intendedWord.value.theme = newWord.theme;
+const loadWordFromBackend = async () => {
+  if (selectedThemes.length === 0) {
+    error.value = 'Темы не выбраны. Вернитесь и выберите темы.';
+    loading.value = false;
+    return;
+  }
 
+  loading.value = true;
+  error.value = '';
+
+  try {
+    const data = await hangmanApi.getRandomWord(selectedThemes);
+    intendedWord.value.text = data.word;
+    intendedWord.value.theme = data.theme;
+  } catch (err) {
+    console.error('Ошибка загрузки слова:', err);
+    error.value = 'Не удалось загрузить слово. Проверьте соединение с сервером.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+const resetGame = () => {
   isWinner.value = false;
   isLoser.value = false;
   currentMistakes.value = 0;
   guessedLetters.value.clear();
   wrongLetters.value.clear();
-
   hideAllHangmanParts();
+  loadWordFromBackend();
 };
 
-// Обработка нажатия на букву
 const handleLetter = (letter: string) => {
-  if (isWinner.value || isLoser.value) return;
-
+  if (isWinner.value || isLoser.value || loading.value) return;
   const upperLetter = letter.toUpperCase();
 
   if (guessedLetters.value.has(upperLetter) || wrongLetters.value.has(upperLetter)) return;
 
   if (wordLetters.value.includes(upperLetter)) {
     guessedLetters.value.add(upperLetter);
-    if (isWordGuessed.value) {
-      isWinner.value = true;
-    }
+    if (isWordGuessed.value) isWinner.value = true;
   } else {
     wrongLetters.value.add(upperLetter);
     currentMistakes.value++;
     updateHangmanByMistakes();
-
-    if (currentMistakes.value >= MAX_MISTAKES) {
-      isLoser.value = true;
-    }
+    if (currentMistakes.value >= MAX_MISTAKES) isLoser.value = true;
   }
 };
 
-const onLetterClick = (letter: string) => {
-  handleLetter(letter);
-};
+const onLetterClick = (letter: string) => handleLetter(letter);
 
 const onKeyPress = (event: KeyboardEvent) => {
   const key = event.key.toUpperCase();
-  const russianLettersPattern = /^[А-ЯЁ]$/i;
-  if (russianLettersPattern.test(key)) {
-    handleLetter(key);
-  }
+  if (/^[А-ЯЁ]$/i.test(key)) handleLetter(key);
 };
 
-const playAgain = () => {
-  resetGame();
-};
+const playAgain = () => resetGame();
+const goBackToThemes = () => router.push({ name: 'select-themes' });
 
 onMounted(() => {
-  resetGame();
+  if (selectedThemes.length === 0) {
+    error.value = 'Темы не выбраны. Пожалуйста, вернитесь и выберите темы.';
+    loading.value = false;
+  } else {
+    loadWordFromBackend();
+  }
   window.addEventListener("keydown", onKeyPress);
 });
 
@@ -136,67 +127,82 @@ onBeforeUnmount(() => {
   window.removeEventListener("keydown", onKeyPress);
 });
 
-watch(() => intendedWord.value.text, () => {
-  updateHangmanByMistakes();
-});
+watch(() => intendedWord.value.text, () => updateHangmanByMistakes());
 </script>
 
 <template>
   <div id="game-screen" class="screen">
     <div class="container">
-      <div class="word-theme" v-if="intendedWord.theme">
-        Тема: {{ intendedWord.theme }}
+      <!-- Кнопка назад -->
+      <button class="back-btn" @click="goBackToThemes">← Назад к темам</button>
+
+      <!-- Ошибка -->
+      <div v-if="error" class="error-message">
+        {{ error }}
+        <button @click="goBackToThemes">Выбрать темы</button>
       </div>
 
-      <!-- Виселица -->
-      <div id="hangman">
-        <div id="platform"></div>
-        <div id="part1"></div>
-        <div id="part2"></div>
-        <div id="part3"></div>
-        <div id="corpse">
-          <div id="head"></div>
-          <div id="body"></div>
-          <div id="handLeft"></div>
-          <div id="handRight"></div>
-          <div id="legLeft"></div>
-          <div id="legRight"></div>
+      <!-- Загрузка -->
+      <div v-else-if="loading" class="loading-message">
+        Загрузка слова...
+      </div>
+
+      <!-- Игра -->
+      <template v-else>
+        <div class="word-theme" v-if="intendedWord.theme">
+          Тема: {{ intendedWord.theme }}
         </div>
-      </div>
 
-      <!-- Отображение слова -->
-      <div class="word">
-        <div
-            v-for="(letter, idx) in displayWord"
-            :key="idx"
-            class="word__letter"
-            :data-state="letter !== '_' ? 'filled' : 'empty'"
-        >
-          {{ letter }}
+        <!-- Виселица -->
+        <div id="hangman">
+          <div id="platform"></div>
+          <div id="part1"></div>
+          <div id="part2"></div>
+          <div id="part3"></div>
+          <div id="corpse">
+            <div id="head"></div>
+            <div id="body"></div>
+            <div id="handLeft"></div>
+            <div id="handRight"></div>
+            <div id="legLeft"></div>
+            <div id="legRight"></div>
+          </div>
         </div>
-      </div>
 
-      <!-- Клавиатура -->
-      <div class="keys">
-        <div
-            v-for="letter in ruKeys"
-            :key="letter"
-            class="letter-card"
-            :class="{
-            'disabled': guessedLetters.has(letter.toUpperCase()) || wrongLetters.has(letter.toUpperCase()),
-            'correct': guessedLetters.has(letter.toUpperCase()),
-            'wrong': wrongLetters.has(letter.toUpperCase())
-          }"
-            @click="onLetterClick(letter)"
-        >
-          {{ letter }}
+        <!-- Отображение слова -->
+        <div class="word">
+          <div
+              v-for="(letter, idx) in displayWord"
+              :key="idx"
+              class="word__letter"
+              :data-state="letter !== '_' ? 'filled' : 'empty'"
+          >
+            {{ letter }}
+          </div>
         </div>
-      </div>
 
-      <!-- Счетчик ошибок -->
-      <div class="mistakes-counter">
-        Ошибок: {{ currentMistakes }} / {{ MAX_MISTAKES }}
-      </div>
+        <!-- Клавиатура -->
+        <div class="keys">
+          <div
+              v-for="letter in ruKeys"
+              :key="letter"
+              class="letter-card"
+              :class="{
+              'disabled': guessedLetters.has(letter.toUpperCase()) || wrongLetters.has(letter.toUpperCase()),
+              'correct': guessedLetters.has(letter.toUpperCase()),
+              'wrong': wrongLetters.has(letter.toUpperCase())
+            }"
+              @click="onLetterClick(letter)"
+          >
+            {{ letter }}
+          </div>
+        </div>
+
+        <!-- Счетчик ошибок -->
+        <div class="mistakes-counter">
+          Ошибок: {{ currentMistakes }} / {{ MAX_MISTAKES }}
+        </div>
+      </template>
 
       <!-- Окно победы -->
       <div class="winning" v-if="isWinner">
@@ -206,6 +212,7 @@ watch(() => intendedWord.value.text, () => {
           <span class="fire">🔥</span>
         </div>
         <div class="button js-play" @click="playAgain">Еще раз?</div>
+        <div class="button secondary" @click="goBackToThemes">Выбрать другие темы</div>
       </div>
 
       <!-- Окно поражения -->
@@ -215,6 +222,7 @@ watch(() => intendedWord.value.text, () => {
           <div class="losing__word">Загаданное слово: {{ intendedWord.text }}</div>
         </div>
         <div class="button js-play" @click="playAgain">Еще раз?</div>
+        <div class="button secondary" @click="goBackToThemes">Выбрать другие темы</div>
       </div>
     </div>
   </div>
@@ -227,8 +235,58 @@ watch(() => intendedWord.value.text, () => {
   align-items: center;
   min-height: 100vh;
   flex-direction: column;
-
+  position: relative;
 }
+
+.back-btn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: #d6b575;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: bold;
+  color: #2f241b;
+  transition: 0.1s;
+
+  &:hover {
+    background: #c4a060;
+  }
+}
+
+.error-message, .loading-message {
+  text-align: center;
+  font-size: 1.2rem;
+  background: #2d241c;
+  padding: 20px 40px;
+  border-radius: 20px;
+  color: #ffdfa5;
+
+  button {
+    margin-top: 15px;
+    background: #e7b874;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+}
+
+.button.secondary {
+  background: #8a7a62;
+  box-shadow: 0 5px 0 #5a4a38;
+  margin-top: 10px;
+
+  &:active {
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 #5a4a38;
+  }
+}
+
+// Остальные стили из твоего компонента
 #hangman {
   position: relative;
   width: 280px;
@@ -239,7 +297,6 @@ watch(() => intendedWord.value.text, () => {
   box-shadow: inset 0 0 0 3px #ecd9b9, 0 8px 18px rgba(0, 0, 0, 0.2);
 }
 
-// Все части скрыты по умолчанию
 #platform, #part1, #part2, #part3,
 #head, #body, #handLeft, #handRight, #legLeft, #legRight {
   opacity: 0;
@@ -247,12 +304,10 @@ watch(() => intendedWord.value.text, () => {
   position: absolute;
 }
 
-// Класс видимости - меняем только opacity, не трогаем transform!
 .visible {
   opacity: 1 !important;
 }
 
-// platform — основание виселицы
 #platform {
   bottom: 25px;
   left: 45px;
@@ -264,7 +319,6 @@ watch(() => intendedWord.value.text, () => {
   z-index: 2;
 }
 
-// вертикальные стойки и перекладина
 #part1 {
   bottom: 25px;
   left: 65px;
@@ -295,7 +349,6 @@ watch(() => intendedWord.value.text, () => {
   border-radius: 20px;
 }
 
-// corpse-контейнер
 #corpse {
   position: absolute;
   top: 0;
@@ -372,7 +425,6 @@ watch(() => intendedWord.value.text, () => {
   transform: rotate(25deg);
 }
 
-// Слово и буквы
 .word {
   display: flex;
   justify-content: center;
@@ -408,7 +460,6 @@ watch(() => intendedWord.value.text, () => {
   }
 }
 
-// Тема
 .word-theme {
   text-align: center;
   font-size: 0.9rem;
@@ -422,7 +473,6 @@ watch(() => intendedWord.value.text, () => {
   backdrop-filter: blur(4px);
 }
 
-// Клавиатура
 .keys {
   display: grid;
   grid-gap: 12px;
@@ -473,7 +523,6 @@ watch(() => intendedWord.value.text, () => {
   }
 }
 
-// Счетчик ошибок
 .mistakes-counter {
   text-align: center;
   font-size: 1.2rem;
@@ -487,7 +536,6 @@ watch(() => intendedWord.value.text, () => {
   color: #ffdfa5;
 }
 
-// Окна победы и поражения
 .winning, .losing {
   position: fixed;
   top: 50%;
