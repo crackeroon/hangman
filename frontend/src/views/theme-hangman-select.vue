@@ -2,8 +2,12 @@
 import Button from "@/components/ui/Button.vue";
 import { HANGMAN_THEMES } from "@/constants/Global";
 import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 
+const router = useRouter();
 const selectedThemes = ref<string[]>([]);
+const showWarning = ref(false);
+let warningTimer: ReturnType<typeof setTimeout> | null = null; // Храним ссылку на таймер
 
 // Состояние "Выбрать все"
 const selectAll = computed({
@@ -14,30 +18,35 @@ const selectAll = computed({
     } else {
       selectedThemes.value = [];
     }
+    showWarning.value = false;
+    if (warningTimer) clearTimeout(warningTimer); // Очищаем таймер
   }
 });
 
-// Функция для ручного переключения "Выбрать все"
-const toggleAll = () => {
-  if (selectedThemes.value.length === HANGMAN_THEMES.length) {
-    selectedThemes.value = [];
-  } else {
-    selectedThemes.value = HANGMAN_THEMES.map(t => t.value);
+// Функция начала игры с проверкой
+const startGame = () => {
+  if (selectedThemes.value.length === 0) {
+    // Очищаем предыдущий таймер, если он есть
+    if (warningTimer) {
+      clearTimeout(warningTimer);
+      warningTimer = null;
+    }
+
+    showWarning.value = true;
+
+    // Скрыть предупреждение через 2 секунды
+    warningTimer = setTimeout(() => {
+      showWarning.value = false;
+      warningTimer = null;
+    }, 2000);
+    return;
   }
-};
 
-const getThemeText = (value: string) => {
-  const theme = HANGMAN_THEMES.find(t => t.value === value);
-  return theme?.text || value;
-};
-
-const removeTheme = (themeValue: string) => {
-  selectedThemes.value = selectedThemes.value.filter(v => v !== themeValue);
-};
-
-// Для отладки - посмотрим, что выбрано
-const logSelected = () => {
-  console.log('Выбрано тем:', selectedThemes.value);
+  // Переход на страницу игры с выбранными темами
+  router.push({
+    name: 'game',
+    query: { themes: selectedThemes.value.join(',') }
+  });
 };
 </script>
 
@@ -47,7 +56,6 @@ const logSelected = () => {
       <h1 class="h1 _text-center">Выберите тему</h1>
 
       <div class="themes-grid">
-        <!-- Чекбокс "Выбрать все" - убираем @change, оставляем только v-model -->
         <label class="theme-checkbox theme-checkbox--all">
           <input
               type="checkbox"
@@ -67,13 +75,21 @@ const logSelected = () => {
               type="checkbox"
               v-model="selectedThemes"
               :value="theme.value"
+              @change="showWarning = false"
           />
           <span class="checkbox-custom"></span>
           <span class="theme-text">{{ theme.text }}</span>
         </label>
       </div>
 
-      <Button class="btn" @click="logSelected">Начать</Button>
+      <div class="start-game">
+        <!-- Предупреждение -->
+        <div v-show="showWarning" class="warning-message">
+          ⚠️ Пожалуйста, выберите хотя бы одну тему
+        </div>
+
+        <Button class="btn" @click="startGame">Начать</Button>
+      </div>
     </div>
   </div>
 </template>
@@ -166,5 +182,31 @@ const logSelected = () => {
       background: #FFC107;
     }
   }
+}
+
+.start-game {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.warning-message {
+  position: absolute;
+  top: -35px;
+  background: rgba(255, 87, 34, 0.9);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  animation: fadeInOut 2s ease;
+  animation-fill-mode: forwards;
+}
+
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translateY(-10px); }
+  15% { opacity: 1; transform: translateY(0); }
+  85% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-10px); visibility: hidden; }
 }
 </style>

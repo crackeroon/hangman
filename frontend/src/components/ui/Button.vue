@@ -1,5 +1,5 @@
 <template>
-  <button :class="classes" :type="type">
+  <button  :class="classes" :type="type">
     <div v-if="hasSlot('default')">
       <slot></slot>
     </div>

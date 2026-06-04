@@ -23,7 +23,7 @@ import Button from "@/components/ui/Button.vue";
   height: 100%;
 }
 .screen .container {
-  height: 70svh;
+  height: 30svh;
   display: flex;
   align-items: center;
   justify-content: start;

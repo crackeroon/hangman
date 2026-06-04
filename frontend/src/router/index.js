@@ -17,6 +17,11 @@ const routes = [
     component: () => import('@/views/start-page.vue'),
   },
   {
+    name: 'game',
+    path: '/hangman-game',
+    component: () => import('@/views/hangman.vue'),
+  },
+  {
     name: 'select-themes',
     path: '/hangman-themes',
     component: () => import('@/views/theme-hangman-select.vue'),
